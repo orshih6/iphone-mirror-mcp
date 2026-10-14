@@ -5,7 +5,7 @@ macOS **iPhone Mirroring** app. No Xcode, no USB, no jailbreak, no WebDriverAgen
 
 ![Demo: the CLI opens Pinduoduo and messages a seller in Chinese, then Claude Code reads the reply and translates it](docs/demo.gif)
 
-*A real, unedited run on an iPhone: the CLI opens Pinduoduo, finds a store's chat and sends a
+*A real run on an iPhone (the wait for the reply is cut): the CLI opens Pinduoduo, finds a store's chat and sends a
 question in Chinese; then Claude Code reads the seller's reply over MCP and translates it.
 The terminal is re-drawn from the run's log; the phone is the real recording.
 [Full-quality MP4](docs/demo.mp4)*
