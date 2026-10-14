@@ -158,6 +158,8 @@ An invalid config file is an error rather than being ignored, because it may con
 - If the Mac's screen is locked, all input is refused with a clear error.
 - `read_screen` uses accurate OCR by default (fast mode garbles icon labels on busy
   wallpapers). For Chinese or Cyrillic, set `"ocr_languages": ["en-US", "zh-Hans", "ru-RU"]`.
+  Vision picks its script from the first language, so the tool runs a Chinese/Japanese/Korean
+  pass first and, if Cyrillic is configured too, a second pass for Cyrillic, then merges them.
 
 ## Typing non-English text
 

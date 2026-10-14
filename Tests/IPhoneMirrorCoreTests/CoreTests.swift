@@ -215,3 +215,19 @@ let contentSize = CGSize(width: 330, height: 716)
     #expect(throws: MirrorError.self) { try Config.load(path: path) }
   }
 }
+
+@Suite struct OCRMergeTests {
+  @Test func splitsScripts() {
+    let (cjk, cyr, rest) = OCR.split(["en-US", "zh-Hans", "ru-RU"])
+    #expect(cjk == ["zh-Hans"] && cyr == ["ru-RU"] && rest == ["en-US"])
+  }
+
+  @Test func cyrillicReplacesGarbleButNotChinese() {
+    let garbled = TextBox(text: "Xyhnn 3pyyn", rect: Rect(x: 0.1, y: 0.1, w: 0.3, h: 0.05), confidence: 0.3)
+    let chinese = TextBox(text: "红蜻蜓延隆专卖店", rect: Rect(x: 0.1, y: 0.3, w: 0.5, h: 0.05), confidence: 1)
+    let cyr = TextBox(text: "Хүний эрүүл", rect: Rect(x: 0.1, y: 0.1, w: 0.3, h: 0.05), confidence: 0.9)
+    let cyrOverChinese = TextBox(text: "Ьа", rect: Rect(x: 0.1, y: 0.3, w: 0.2, h: 0.05), confidence: 0.5)
+    let out = OCR.merge([garbled, chinese], [cyr, cyrOverChinese])
+    #expect(out.map(\.text) == ["Хүний эрүүл", "红蜻蜓延隆专卖店"])
+  }
+}
