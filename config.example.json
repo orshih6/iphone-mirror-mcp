@@ -1,0 +1,14 @@
+{
+  "bundle_id": "com.apple.ScreenContinuity",
+  "default_width": 320,
+  "jpeg_quality": 50,
+  "blocked_apps": ["Wallet", "PayPal", "Your Bank"],
+  "crop_insets": { "top": 0, "left": 0, "bottom": 0, "right": 0 },
+  "ocr_languages": ["en-US"],
+  "menu_home": "Home Screen",
+  "menu_app_switcher": "App Switcher",
+  "menu_spotlight": "Spotlight",
+  "stable_interval_ms": 150,
+  "stable_timeout_ms": 2000,
+  "restore_mouse": true
+}
