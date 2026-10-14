@@ -3,6 +3,13 @@
 Let Claude Code (or any MCP client) see and control a real iPhone through the
 macOS **iPhone Mirroring** app. No Xcode, no USB, no jailbreak, no WebDriverAgent.
 
+![Demo: the CLI opens Pinduoduo and messages a seller in Chinese, then Claude Code reads the reply and translates it](docs/demo.gif)
+
+*A real, unedited run on an iPhone: the CLI opens Pinduoduo, finds a store's chat and sends a
+question in Chinese; then Claude Code reads the seller's reply over MCP and translates it.
+The terminal is re-drawn from the run's log; the phone is the real recording.
+[Full-quality MP4](docs/demo.mp4)*
+
 It is built to spend as few tokens as possible per step:
 
 - **Text first.** `read_screen` returns OCR text with boxes as compact JSON, with no image.
