@@ -151,6 +151,10 @@ An invalid config file is an error rather than being ignored, because it may con
   (phased) scroll events.
 - **`swipe` (click-drag) does not scroll lists** in iPhone Mirroring on iOS 26 (verified),
   so use `scroll` for lists. `swipe` is kept for drag gestures such as moving sliders.
+- **`open_app` is not fully reliable yet** (about 4 in 6 on iOS 26): iOS sometimes ignores
+  the Spotlight shortcut right after leaving an app. Confirm with `wait_for_text` and retry once.
+- **Phone calls cannot be placed through iPhone Mirroring.** iOS answers "Calls are not
+  available using iPhone Mirroring".
 - If the Mac's screen is locked, all input is refused with a clear error.
 - `read_screen` uses accurate OCR by default (fast mode garbles icon labels on busy
   wallpapers). For Chinese or Cyrillic, set `"ocr_languages": ["en-US", "zh-Hans", "ru-RU"]`.

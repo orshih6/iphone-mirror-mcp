@@ -96,7 +96,7 @@ let tools: [Tool] = [
   Tool(name: "home", description: "Go to the Home Screen.", inputSchema: obj(["return_screenshot": shotProp, "wait": waitProp])),
   Tool(name: "app_switcher", description: "Open the App Switcher.", inputSchema: obj(["return_screenshot": shotProp, "wait": waitProp])),
   Tool(name: "spotlight", description: "Open Spotlight search.", inputSchema: obj(["return_screenshot": shotProp, "wait": waitProp])),
-  Tool(name: "open_app", description: "Open an app by name via Spotlight.", inputSchema: obj(["name": prop("string")], required: ["name"])),
+  Tool(name: "open_app", description: "Open an app by name via Spotlight. Confirm with wait_for_text; retry once if it did not open.", inputSchema: obj(["name": prop("string")], required: ["name"])),
   Tool(
     name: "wait_for_text", description: "Poll OCR until text appears (no images). Stops at once on errors such as a locked Mac.",
     inputSchema: obj(["text": prop("string", "a|b waits for either"), "timeout_ms": prop("integer", "default 5000")], required: ["text"])

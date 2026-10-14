@@ -440,29 +440,80 @@ public actor Controller {
     case .spotlight: (config.menuSpotlight, 20)
     }
     let geo = try await geometry()
-    var how = "menu"
-    let r = try await act(geo, o) { g in
-      try g.check()
-      if !Input.pressMenuItem(pid: geo.win.pid, title: title) {
-        how = "shortcut"
-        Input.key(key, flags: .maskCommand)
+    let how = Box("menu")
+    func press() async throws -> ActionResult {
+      try await act(geo, o) { g in
+        try g.check()
+        if !Input.pressMenuItem(pid: geo.win.pid, title: title) {
+          how.value = "shortcut"
+          Input.key(key, flags: .maskCommand)
+        }
       }
+    }
+    // iOS drops the request when it arrives mid-animation (e.g. right after Home).
+    // Spotlight and the App Switcher always change the screen, so retry once if it didn't.
+    // The "before" frame must be taken once the screen is still; mid-animation it
+    // would differ from the result even when the press was ignored.
+    var before: Thumb?
+    if action != .home {
+      await waitStable()
+      before = await quickThumb()
+    }
+    var r = try await press()
+    for _ in 0..<2 {
+      guard let b = before, let after = await quickThumb(), b.settled(after) else { break }
+      Log.info("\(title) had no visible effect; retrying")
+      try await Task.sleep(for: .milliseconds(700))
+      r = try await press()
     }
     // Spotlight's search field takes focus after its animation; typed keys before that are lost.
     if action == .spotlight { try await Task.sleep(for: .milliseconds(600)) }
-    Log.info("\(title) via \(how)")
+    Log.info("\(title) via \(how.value)")
     return r
   }
 
   public func openApp(_ name: String) async throws -> ActionResult {
     if Safety.isBlocked(name, blocked: config.blockedApps) { throw MirrorError.blocked(name) }
+    // Spotlight sometimes swallows a step (timing inside iOS). Ending exactly where we
+    // started means nothing opened: retry once, then say so instead of reporting "ok".
+    let start = await quickThumb()
+    for attempt in 1...2 {
+      let r = try await openAppOnce(name)
+      // "settled", not "same": a live widget on the Home Screen changes a cell or two.
+      guard let start, let now = await quickThumb(), start.settled(now) else { return r }
+      Log.info("open_app \(name): screen unchanged after attempt \(attempt)")
+    }
+    throw MirrorError.timeout("\"\(name)\" did not open (screen unchanged after 2 attempts)")
+  }
+
+  private func openAppOnce(_ name: String) async throws -> ActionResult {
     _ = try await menu(.spotlight)
     _ = try await typeText(name, method: .auto)
+    // Spotlight fills its results asynchronously: wait until the name is listed in two
+    // polls in a row, let the Top Hit settle, then Return opens it. (Tapping a match is
+    // unreliable: Home Screen labels stay readable through Spotlight's translucent
+    // background, including this app's own icon label.)
+    let deadline = Date().addingTimeInterval(4)
+    var seenBefore = false, ready = false
+    while Date() < deadline, !ready {
+      try await Task.sleep(for: .milliseconds(300))
+      let (_, boxes) = try await ocr(accurate: true)
+      let seen = !TextMatch.find(name, in: boxes, exact: true).isEmpty
+      ready = seen && seenBefore
+      seenBefore = seen
+    }
+    guard ready else { throw MirrorError.timeout("Spotlight shows no app named \"\(name)\"; nothing was opened") }
     try await Task.sleep(for: .milliseconds(500))
     var r = try await pressKey("return")
     r.text = "ok: opened \(json(name)) via Spotlight"
     return r
   }
+}
+
+/// A mutable value shared with a closure that runs inside the actor.
+private final class Box<T>: @unchecked Sendable {
+  var value: T
+  init(_ value: T) { self.value = value }
 }
 
 private func launchApp(_ url: URL, _ cfg: NSWorkspace.OpenConfiguration) async throws {
