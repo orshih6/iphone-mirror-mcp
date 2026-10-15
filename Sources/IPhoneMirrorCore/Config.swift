@@ -21,6 +21,11 @@ public struct Config: Sendable, Equatable {
   public var stableIntervalMs = 150
   public var stableTimeoutMs = 2000
   public var restoreMouse = true
+  /// Let the user keep working on the Mac: menu actions and captures never take focus;
+  /// taps, swipes and typing borrow it for a moment, then hand it back to the user's app.
+  public var background = true
+  /// Background mode waits until the user has not touched the mouse or keyboard for this long.
+  public var idleMs = 700
 
   public struct Insets: Sendable, Equatable, Decodable {
     public var top = 0.0, left = 0.0, bottom = 0.0, right = 0.0
@@ -59,7 +64,7 @@ extension Config: Decodable {
     case blockedApps = "blocked_apps", cropInsets = "crop_insets", ocrLanguages = "ocr_languages"
     case menuHome = "menu_home", menuAppSwitcher = "menu_app_switcher", menuSpotlight = "menu_spotlight"
     case stableIntervalMs = "stable_interval_ms", stableTimeoutMs = "stable_timeout_ms"
-    case restoreMouse = "restore_mouse"
+    case restoreMouse = "restore_mouse", background, idleMs = "idle_ms"
   }
 
   public init(from decoder: Decoder) throws {
@@ -77,5 +82,7 @@ extension Config: Decodable {
     stableIntervalMs = try c.decodeIfPresent(Int.self, forKey: .stableIntervalMs) ?? d.stableIntervalMs
     stableTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .stableTimeoutMs) ?? d.stableTimeoutMs
     restoreMouse = try c.decodeIfPresent(Bool.self, forKey: .restoreMouse) ?? d.restoreMouse
+    background = try c.decodeIfPresent(Bool.self, forKey: .background) ?? d.background
+    idleMs = try c.decodeIfPresent(Int.self, forKey: .idleMs) ?? d.idleMs
   }
 }

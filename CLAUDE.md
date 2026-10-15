@@ -25,7 +25,10 @@ swift test                  # unit tests (no iPhone needed)
 Invariants:
 - Capture only the iPhone Mirroring window (`SCContentFilter(desktopIndependentWindow:)`), never the display.
 - Every input action goes through `Controller.act`: Accessibility check, iPhone Mirroring
-  frontmost, kill switch (`AbortGuard`), cursor restore, wait-for-stable.
+  frontmost, kill switch (`AbortGuard`), cursor restore, wait-for-stable. In background
+  mode it also waits for the user to pause, holds their input (`UserActivityMonitor.hold`)
+  and hands focus back afterwards. Input sent without focus is ignored by iPhone
+  Mirroring (postToPid, SkyLight, menu items while an app is open): don't retry that.
 - Points are validated by `ViewMapping.screenPoint`; a point off the phone is an error, never a click.
 - stdout is the MCP channel. Log with `Log.info` (stderr + ~/Library/Logs/iphone-mirror-mcp/).
 - No network calls; no files written except the log (the CLI `screenshot` writes only where asked).

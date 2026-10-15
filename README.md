@@ -128,18 +128,40 @@ path. Every key is optional; see [`config.example.json`](config.example.json).
 | `menu_home` / `menu_app_switcher` / `menu_spotlight` | `Home Screen` / `App Switcher` / `Spotlight` | menu titles to press; falls back to ⌘1 / ⌘2 / ⌘3 |
 | `stable_interval_ms` / `stable_timeout_ms` | `150` / `2000` | wait-for-stable tuning |
 | `restore_mouse` | `true` | put the cursor back after each action |
+| `background` | `true` | let you keep using the Mac while it works (see below) |
+| `idle_ms` | `700` | background mode waits until you have left the mouse and keyboard alone this long |
 
 An invalid config file is an error rather than being ignored, because it may contain
 `blocked_apps`.
+
+## Using the Mac at the same time
+
+With `background` on (the default) you can keep working while an agent drives the phone.
+
+- Reading the screen (`screenshot`, `read_screen`, `find_text`, `wait_for_text`) never
+  takes focus; iPhone Mirroring can sit behind your other windows.
+- Input (taps, swipes, typing, Home / Spotlight / App Switcher) has to borrow focus:
+  iPhone Mirroring turns only real HID events into touches, and only while it is frontmost.
+  Sending events straight to its process (`CGEventPostToPid`, SkyLight's
+  `SLEventPostToPid`, key-window-without-raise) was tested and is ignored. So each action
+  waits until you pause for `idle_ms`, brings iPhone Mirroring forward, acts, then puts
+  your cursor back and hands focus back to the app you were in, usually in 0.3–0.5 s.
+- While focus is borrowed, your keys, clicks and scrolls are held back and replayed to your
+  app afterwards, so they never land on the phone. Esc still aborts. The hold always
+  expires, so input cannot get stuck.
+- Set `"background": false` for the old behaviour: iPhone Mirroring stays in front.
 
 ## Safety
 
 - Only the iPhone Mirroring window is captured, never the full display.
 - Input is sent only while iPhone Mirroring is the frontmost app, and only to points
   inside the phone screen. The frontmost check runs again between every step.
-- **Kill switch:** press **Esc** or move/click the mouse during an action and it stops with
-  `aborted by user (…)`. A listen-only event tap tells your input apart from the tool's
-  (every posted event carries a marker), so iOS pointer snapping cannot trigger it.
+- **Kill switch:** press **Esc** during an action and it stops with `aborted by user (…)`.
+  With `background` off, moving/clicking the mouse or typing also stops it. An event tap
+  tells your input apart from the tool's (every posted event carries a marker), so iOS
+  pointer snapping cannot trigger it.
+- Nothing is sent while iPhone Mirroring shows its own lock screen (it asks for the Mac
+  password after a while unused); unlock it first.
 - Your cursor position is restored after each action.
 - `blocked_apps` keeps `open_app` / `tap_text` away from banking or payment apps.
 - No network calls. The only file written is the log at

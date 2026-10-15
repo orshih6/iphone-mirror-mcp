@@ -202,6 +202,12 @@ let contentSize = CGSize(width: 330, height: 716)
     #expect(c.cropInsets.top == 28 && c.cropInsets.left == 0)
     #expect(c.bundleID == "com.apple.ScreenContinuity")
     #expect(c.jpegQuality == 50)
+    #expect(c.background && c.idleMs == 700)
+  }
+
+  @Test func backgroundCanBeTurnedOff() throws {
+    let c = try JSONDecoder().decode(Config.self, from: Data(#"{"background":false,"idle_ms":1500}"#.utf8))
+    #expect(!c.background && c.idleMs == 1500)
   }
 
   @Test func missingFileIsDefault() throws {

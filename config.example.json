@@ -10,5 +10,7 @@
   "menu_spotlight": "Spotlight",
   "stable_interval_ms": 150,
   "stable_timeout_ms": 2000,
-  "restore_mouse": true
+  "restore_mouse": true,
+  "background": true,
+  "idle_ms": 700
 }

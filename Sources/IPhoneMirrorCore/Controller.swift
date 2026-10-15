@@ -148,7 +148,7 @@ public actor Controller {
     if WindowLocator.runningApp(config.bundleID) == nil {
       guard let url = WindowLocator.appURL(config.bundleID) else { throw MirrorError.appNotInstalled(config.bundleID) }
       let cfg = NSWorkspace.OpenConfiguration()
-      try await launchApp(url, cfg)
+      launchApp(url, cfg)
     }
     let deadline = Date().addingTimeInterval(15)
     var lastError: Error = MirrorError.windowNotFound
@@ -300,29 +300,66 @@ public actor Controller {
 
   /// Every input action goes through here: permissions, frontmost, kill switch,
   /// cursor restore, then (unless `o.wait` is false) wait until the screen settles.
+  /// In background mode it first waits for the user to pause, and afterwards hands
+  /// focus back to the app they were using. iPhone Mirroring turns only HID events
+  /// into touches, and only while it is frontmost, so focus has to be borrowed.
   private func act(_ geo: Geometry, _ o: ActOptions, _ body: (AbortGuard) async throws -> Void) async throws -> ActionResult {
     try Permissions.requireAccessibility()
+    if let message = Safety.windowMessage(pid: geo.win.pid) { throw MirrorError.notMirroring(message) }
     let saved = Input.cursor()
-    // Another app can grab focus between activation and the first event (e.g. the
-    // terminal that launched us). If nothing was sent yet, take focus back once and retry.
-    for attempt in 0..<2 {
-      try await Safety.activate(bundleID: config.bundleID, pid: geo.win.pid)
+    let front = Safety.frontmostPid()
+    let back = config.background && front != geo.win.pid ? front : nil
+    func restore() async {
+      if config.restoreMouse { Input.moveCursor(saved) }
+      guard let back else { return }
+      // Posted events are queued; iPhone Mirroring drops any it reads after losing focus.
+      try? await Task.sleep(for: .milliseconds(150))
+      await Safety.handBack(to: back)
+      UserActivityMonitor.shared.release()
+    }
+    // Retry when nothing reached the phone yet: another app grabbed focus between
+    // activation and the first event, or (background mode) the user started using the Mac.
+    for attempt in 0..<3 {
+      if back != nil { try await waitUserIdle() }
       let before = Input.posted.value
       do {
+        // Keys the user types now would land on the phone; hold them until focus is back.
+        if back != nil { UserActivityMonitor.shared.hold(seconds: 15) }
+        try await Safety.activate(bundleID: config.bundleID, pid: geo.win.pid)
         try await body(AbortGuard(pid: geo.win.pid))
         break
-      } catch let MirrorError.aborted(why) where why.contains("lost focus") && attempt == 0 && Input.posted.value == before {
-        Log.info("focus lost before any input; retrying")
+      } catch let MirrorError.aborted(why)
+        where attempt < 2 && Input.posted.value == before && (why.contains("lost focus") || back != nil) {
+        Log.info("aborted before any input (\(why)); retrying")
+        if back != nil { await restore() }
         continue
       } catch {
-        if config.restoreMouse { Input.moveCursor(saved) }
+        await restore()
         throw error
       }
     }
-    if config.restoreMouse { Input.moveCursor(saved) }
+    await restore()
+    return try await finish(o)
+  }
+
+  private func finish(_ o: ActOptions) async throws -> ActionResult {
     if o.wait { await waitStable() }
     let shot = o.returnShot ? try await screenshot(ShotOptions(force: true)) : nil
     return ActionResult(text: "ok", shot: shot)
+  }
+
+  /// Waits until the user has left the mouse and keyboard alone for `idleMs`.
+  private func waitUserIdle() async throws {
+    let monitor = UserActivityMonitor.shared
+    monitor.start()
+    let need = Double(config.idleMs) / 1000
+    let deadline = Date().addingTimeInterval(30)
+    while monitor.idleSeconds() < need {
+      guard Date() < deadline else {
+        throw MirrorError.aborted("the Mac was in use for 30 s; nothing was sent. Retry when it is idle")
+      }
+      try await Task.sleep(for: .milliseconds(100))
+    }
   }
 
   private func point(_ v: ViewMapping, _ geo: Geometry, x: Double, y: Double, normalized: Bool) throws -> CGPoint {
@@ -441,6 +478,8 @@ public actor Controller {
     }
     let geo = try await geometry()
     let how = Box("menu")
+    // Pressed with focus even in background mode: without it iPhone Mirroring ignores the
+    // item while an app is open, and an animated app hides that the press did nothing.
     func press() async throws -> ActionResult {
       try await act(geo, o) { g in
         try g.check()
@@ -478,7 +517,15 @@ public actor Controller {
     // started means nothing opened: retry once, then say so instead of reporting "ok".
     let start = await quickThumb()
     for attempt in 1...2 {
-      let r = try await openAppOnce(name)
+      let r: ActionResult
+      do {
+        r = try await openAppOnce(name)
+      } catch MirrorError.timeout(let why) where attempt == 1 {
+        // Spotlight can miss a press that lands at the end of an app-closing animation.
+        Log.info("open_app \(name): \(why); retrying from the Home Screen")
+        _ = try await menu(.home)
+        continue
+      }
       // "settled", not "same": a live widget on the Home Screen changes a cell or two.
       guard let start, let now = await quickThumb(), start.settled(now) else { return r }
       Log.info("open_app \(name): screen unchanged after attempt \(attempt)")
@@ -504,7 +551,13 @@ public actor Controller {
     }
     guard ready else { throw MirrorError.timeout("Spotlight shows no app named \"\(name)\"; nothing was opened") }
     try await Task.sleep(for: .milliseconds(500))
+    // A Return that arrives as focus changes hands can be dropped; the results would stay up.
+    let results = await quickThumb()
     var r = try await pressKey("return")
+    if let results, let now = await quickThumb(), results.settled(now) {
+      Log.info("open_app \(name): Return had no effect; pressing again")
+      r = try await pressKey("return")
+    }
     r.text = "ok: opened \(json(name)) via Spotlight"
     return r
   }
@@ -516,11 +569,11 @@ private final class Box<T>: @unchecked Sendable {
   init(_ value: T) { self.value = value }
 }
 
-private func launchApp(_ url: URL, _ cfg: NSWorkspace.OpenConfiguration) async throws {
-  try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
-    NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, error in
-      if let error { c.resume(throwing: MirrorError.captureFailed("could not open iPhone Mirroring: \(error.localizedDescription)")) } else { c.resume() }
-    }
+/// Does not wait for the completion handler: it is sometimes never called (seen with a
+/// "leaked continuation"), which hung `launch` forever. The caller polls for the window.
+private func launchApp(_ url: URL, _ cfg: NSWorkspace.OpenConfiguration) {
+  NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, error in
+    if let error { Log.info("could not open iPhone Mirroring: \(error.localizedDescription)") }
   }
 }
 
